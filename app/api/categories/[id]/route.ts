@@ -3,8 +3,9 @@ import { getSession } from '@/lib/session';
 
 export async function DELETE(
   _: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params;
   const session = await getSession();
   if (!session || session.role !== 'admin')
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -12,7 +13,7 @@ export async function DELETE(
   const { error } = await supabaseAdmin
     .from('categories')
     .delete()
-    .eq('id', params.id);
+    .eq('id', id);
 
   if (error) return Response.json({ error: error.message }, { status: 400 });
   return Response.json({ ok: true });

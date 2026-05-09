@@ -6,8 +6,9 @@ const slugify = (s: string) =>
 
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params;
   const session = await getSession();
   if (!session || session.role !== 'admin')
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -34,7 +35,7 @@ export async function PUT(
   const { data, error } = await supabaseAdmin
     .from('products')
     .update(patch)
-    .eq('id', params.id)
+    .eq('id', id)
     .select('*, categories(name, slug)')
     .single();
 
@@ -44,8 +45,9 @@ export async function PUT(
 
 export async function DELETE(
   _: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params;
   const session = await getSession();
   if (!session || session.role !== 'admin')
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -53,7 +55,7 @@ export async function DELETE(
   const { error } = await supabaseAdmin
     .from('products')
     .delete()
-    .eq('id', params.id);
+    .eq('id', id);
 
   if (error) return Response.json({ error: error.message }, { status: 400 });
   return Response.json({ ok: true });

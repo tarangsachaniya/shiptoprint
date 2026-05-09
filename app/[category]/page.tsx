@@ -1,3 +1,4 @@
+
 import { getSession } from '@/lib/session';
 import { supabaseAdmin } from '@/lib/supabase/client';
 import { notFound } from 'next/navigation';
@@ -14,14 +15,16 @@ interface Product {
 export default async function CategoryPage({
   params,
 }: {
-  params: { category: string };
+  params: Promise<{ category: string }>;
 }) {
+  const { category: categorySlug } = await params;
+
   const [session, { data: category, error }] = await Promise.all([
     getSession(),
     supabaseAdmin
       .from('categories')
       .select('id, name, slug, products(id, name, slug, price, media)')
-      .eq('slug', params.category)
+      .eq('slug', categorySlug)
       .single(),
   ]);
 

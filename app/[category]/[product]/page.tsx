@@ -9,19 +9,21 @@ import Link from 'next/link';
 export default async function ProductPage({
   params,
 }: {
-  params: { category: string; product: string };
+  params: Promise<{ category: string; product: string }>;
 }) {
+  const { category: categorySlug, product: productSlug } = await params;
+
   const [session, { data: category }, { data: product }] = await Promise.all([
     getSession(),
     supabaseAdmin
       .from('categories')
       .select('id, name, slug')
-      .eq('slug', params.category)
+      .eq('slug', categorySlug)
       .single(),
     supabaseAdmin
       .from('products')
       .select('*')
-      .eq('slug', params.product)
+      .eq('slug', productSlug)
       .single(),
   ]);
 

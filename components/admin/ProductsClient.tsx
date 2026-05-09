@@ -33,8 +33,8 @@ export default function ProductsClient({
   const [uploading,   setUploading]   = useState(false);
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState('');
-  const imgRef = useRef<HTMLInputElement>(null);
-  const vidRef = useRef<HTMLInputElement>(null);
+  const [dragging,    setDragging]    = useState(false);
+  const dropRef = useRef<HTMLInputElement>(null);
 
   function openCreate() {
     setEditId(null);
@@ -197,7 +197,7 @@ export default function ProductsClient({
       {showForm && (
         <>
           <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setShowForm(false)} />
-          <div className="fixed right-0 top-0 bottom-0 w-full max-w-lg bg-white z-50 shadow-2xl overflow-y-auto">
+          <div className="fixed right-0 top-0 bottom-0 w-full sm:w-1/2 bg-white z-50 shadow-2xl overflow-y-auto">
 
             <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
               <h2 className="text-sm font-semibold">
@@ -327,28 +327,44 @@ export default function ProductsClient({
                     ))}
                   </div>
                 )}
-                <div className="flex gap-2">
-                  <button
-                    type="button" disabled={uploading}
-                    onClick={() => imgRef.current?.click()}
-                    className="flex items-center gap-1.5 text-xs border border-gray-200 px-3 py-2 rounded-lg hover:border-gray-400 disabled:opacity-50"
-                  >
-                    {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                    Image
-                  </button>
-                  <button
-                    type="button" disabled={uploading}
-                    onClick={() => vidRef.current?.click()}
-                    className="flex items-center gap-1.5 text-xs border border-gray-200 px-3 py-2 rounded-lg hover:border-gray-400 disabled:opacity-50"
-                  >
-                    {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                    Video
-                  </button>
+                {/* drag-drop zone */}
+                <div
+                  onClick={() => !uploading && dropRef.current?.click()}
+                  onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={async e => {
+                    e.preventDefault(); setDragging(false);
+                    const files = Array.from(e.dataTransfer.files);
+                    for (const f of files) {
+                      await uploadMedia(f, f.type.startsWith('video/') ? 'video' : 'image');
+                    }
+                  }}
+                  className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed py-6 cursor-pointer transition-colors select-none ${
+                    dragging
+                      ? 'border-gray-400 bg-gray-50'
+                      : uploading
+                      ? 'border-gray-200 opacity-60 cursor-not-allowed'
+                      : 'border-gray-200 hover:border-gray-400 hover:bg-gray-50'
+                  }`}
+                >
+                  {uploading
+                    ? <Loader2 size={20} className="animate-spin text-gray-400" />
+                    : <Upload size={20} className="text-gray-400" />}
+                  <p className="text-xs text-gray-500 font-medium">
+                    {uploading ? 'Uploading…' : 'Drop files here or click to browse'}
+                  </p>
+                  <p className="text-[10px] text-gray-400">PNG · JPG · GIF · WebP · MP4 · MOV</p>
                 </div>
-                <input ref={imgRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadMedia(f, 'image'); e.target.value = ''; }} />
-                <input ref={vidRef} type="file" accept="video/*" className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadMedia(f, 'video'); e.target.value = ''; }} />
+                <input
+                  ref={dropRef} type="file" accept="image/*,video/*" multiple className="hidden"
+                  onChange={async e => {
+                    const files = Array.from(e.target.files ?? []);
+                    for (const f of files) {
+                      await uploadMedia(f, f.type.startsWith('video/') ? 'video' : 'image');
+                    }
+                    e.target.value = '';
+                  }}
+                />
               </div>
 
               {error && <p className="text-xs text-red-500">{error}</p>}
