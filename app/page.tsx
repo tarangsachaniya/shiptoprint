@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/session";
 import Navbar from "@/components/Navbar";
+import CategoryNav from "@/components/CategoryNav";
 
 export default async function HomePage() {
   const session = await getSession();
@@ -8,6 +9,7 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen bg-white">
       <Navbar user={user} />
+      <CategoryNav />
 
       <main className="max-w-5xl mx-auto px-6 py-12 md:py-24">
         <div className="max-w-lg">

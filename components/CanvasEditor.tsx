@@ -15,7 +15,6 @@ import {
 type StickerType = 'circle' | 'square' | 'rect';
 type Unit        = 'in' | 'mm' | 'cm';
 type HistEntry   = { json: string; w: number; h: number; stickerType: StickerType };
-type Stored      = { canvas: object; w: number; h: number; stickerType: StickerType };
 
 /* ─── unit math ─────────────────────────────────────────────── */
 
@@ -41,9 +40,8 @@ function setClip(canvas: fabric.Canvas, w: number, h: number, type: StickerType)
 
 /* ─── constants ─────────────────────────────────────────────── */
 
-const HEX_RE     = /^#[0-9a-fA-F]{6}$/;
-const LS_KEY     = 'sticker-design';
-const MAX_HIST   = 10;
+const HEX_RE   = /^#[0-9a-fA-F]{6}$/;
+const MAX_HIST = 10;
 const DEFAULT_BG = '#ffffff';
 const INIT_DIA   = 3; // 3 inches
 
@@ -82,9 +80,10 @@ export default function CanvasEditor() {
   const [canUndo,  setCanUndo]  = useState(false);
   const [canRedo,  setCanRedo]  = useState(false);
   const [hasSel,   setHasSel]   = useState(false);
-  const [isSaved,  setIsSaved]  = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveLbl,  setSaveLbl]  = useState<'save' | 'saved' | 'error'>('save');
+  const [isSaved,      setIsSaved]      = useState(false);
+  const [isSaving,     setIsSaving]     = useState(false);
+  const [saveLbl,      setSaveLbl]      = useState<'save' | 'saved' | 'error'>('save');
+  const [imgUploading, setImgUploading] = useState(false);
 
   /* ════ history ════════════════════════════════════════════════ */
 
@@ -145,36 +144,9 @@ export default function CanvasEditor() {
     canvas.on('selection:updated', () => setHasSel(true));
     canvas.on('selection:cleared', () => setHasSel(false));
 
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      const isNew  = 'canvas' in parsed;
-      const data   = (isNew ? parsed.canvas : parsed) as Record<string, unknown>;
-      const w      = isNew ? Number(parsed.w)  || px : px;
-      const h      = isNew ? Number(parsed.h)  || px : px;
-      const rawT   = String(parsed.stickerType ?? parsed.shape ?? 'circle');
-      const st     = (rawT === 'rounded' ? 'rect' : rawT) as StickerType;
-
-      skip.current = true;
-      canvas.setDimensions({ width: w, height: h });
-      canvas.loadFromJSON(data).then(() => {
-        setClip(canvas, w, h, st);
-        canvas.renderAll();
-        setCw(w); setCh(h);
-        setStickerType(st); typeRef.current = st;
-        setInputW(String(fromPx(w, 'in')));
-        setInputH(String(fromPx(h, 'in')));
-        const col = canvas.backgroundColor;
-        if (typeof col === 'string') { setBg(col); setHexInput(col); }
-        hist.current    = [{ json: JSON.stringify(canvas.toJSON()), w, h, stickerType: st }];
-        histIdx.current = 0;
-        skip.current    = false;
-      });
-    } else {
-      setClip(canvas, px, px, 'circle');
-      hist.current    = [{ json: JSON.stringify(canvas.toJSON()), w: px, h: px, stickerType: 'circle' }];
-      histIdx.current = 0;
-    }
+    setClip(canvas, px, px, 'circle');
+    hist.current    = [{ json: JSON.stringify(canvas.toJSON()), w: px, h: px, stickerType: 'circle' }];
+    histIdx.current = 0;
 
     return () => { canvas.dispose(); fc.current = null; };
   }, [pushHist]);
@@ -262,18 +234,28 @@ export default function CanvasEditor() {
     fc.current.add(t); fc.current.setActiveObject(t); fc.current.renderAll();
   };
 
-  const uploadImage = (e: ChangeEvent<HTMLInputElement>) => {
+  const uploadImage = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !fc.current) return;
-    const url = URL.createObjectURL(file);
-    const cv  = fc.current, fw = cv.width!, fh = cv.height!;
-    fabric.FabricImage.fromURL(url).then((img) => {
-      const s = Math.min((fw * .85) / (img.width ?? 1), (fh * .85) / (img.height ?? 1), 1);
-      img.set({ left: fw / 2, top: fh / 2, originX: 'center', originY: 'center', scaleX: s, scaleY: s });
-      cv.add(img); cv.setActiveObject(img); cv.renderAll();
-      URL.revokeObjectURL(url);
-    });
     e.target.value = '';
+    setImgUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      if (!res.ok) throw new Error('Upload failed');
+      const { url } = await res.json() as { url: string };
+      const cv = fc.current, fw = cv.width!, fh = cv.height!;
+      fabric.FabricImage.fromURL(url, { crossOrigin: 'anonymous' }).then((img) => {
+        const s = Math.min((fw * .85) / (img.width ?? 1), (fh * .85) / (img.height ?? 1), 1);
+        img.set({ left: fw / 2, top: fh / 2, originX: 'center', originY: 'center', scaleX: s, scaleY: s });
+        cv.add(img); cv.setActiveObject(img); cv.renderAll();
+      });
+    } catch {
+      // upload failed — silently ignore (could add a toast here)
+    } finally {
+      setImgUploading(false);
+    }
   };
 
   const deleteSelected = useCallback(() => {
@@ -297,21 +279,33 @@ export default function CanvasEditor() {
   const save = async () => {
     if (!fc.current || isSaving) return;
     setIsSaving(true);
-    const payload: Stored = {
-      canvas: fc.current.toJSON(), w: fc.current.width!,
-      h: fc.current.height!, stickerType: typeRef.current,
-    };
-    localStorage.setItem(LS_KEY, JSON.stringify(payload));
     try {
-      const res  = await fetch('/api/designs', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      // 1. Export canvas as 2× PNG
+      const dataUrl = fc.current.toDataURL({ format: 'png', multiplier: 2 });
+      const blob    = await (await fetch(dataUrl)).blob();
+      const file    = new File([blob], 'sticker.png', { type: 'image/png' });
+
+      // 2. Upload PNG to Cloudinary
+      const form = new FormData();
+      form.append('file', file);
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: form });
+      if (!uploadRes.ok) throw new Error('Upload failed');
+      const { url } = (await uploadRes.json()) as { url: string };
+
+      // 3. Persist Cloudinary URL in DB
+      const dbRes = await fetch('/api/designs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: designId.current ?? undefined, canvasData: payload.canvas,
-          w: payload.w, h: payload.h, shape: payload.stickerType,
+          id:       designId.current ?? undefined,
+          imageUrl: url,
+          w:        fc.current.width!,
+          h:        fc.current.height!,
+          shape:    typeRef.current,
         }),
       });
-      const json = await res.json();
-      if (res.ok) {
+      const json = await dbRes.json();
+      if (dbRes.ok) {
         designId.current = json.id;
         setIsSaved(true); setSaveLbl('saved');
         setTimeout(() => setSaveLbl('save'), 2000);
@@ -509,8 +503,13 @@ export default function CanvasEditor() {
         {/* ── Sidebar / bottom toolbar ── */}
         <aside className="flex shrink-0 items-center justify-around border-t border-gray-200 bg-white px-2 py-1 md:w-[72px] md:flex-col md:items-center md:justify-start md:gap-1 md:border-r md:border-t-0 md:py-4">
 
-          <SideBtn onClick={addText}                          icon={<Type      size={20} />} label="Text"   />
-          <SideBtn onClick={() => fileInput.current?.click()} icon={<ImageIcon size={20} />} label="Image"  />
+          <SideBtn onClick={addText} icon={<Type size={20} />} label="Text" />
+          <SideBtn
+            onClick={() => !imgUploading && fileInput.current?.click()}
+            icon={imgUploading ? <Loader2 size={20} className="animate-spin" /> : <ImageIcon size={20} />}
+            label="Image"
+            disabled={imgUploading}
+          />
           <input ref={fileInput} type="file" accept="image/*" className="hidden" onChange={uploadImage} />
 
           <div className="hidden md:my-1 md:block md:h-px md:w-10 md:bg-gray-100" />

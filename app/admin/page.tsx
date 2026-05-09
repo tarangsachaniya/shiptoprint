@@ -50,13 +50,20 @@ export default async function AdminDashboard() {
         {/* Tools */}
         <div className="mb-10">
           <h2 className="text-sm font-medium mb-3">Tools</h2>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Link
-              href="/admin/canvas"
+              href="/admin/categories"
               className="border border-gray-100 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all group"
             >
-              <p className="text-sm font-medium group-hover:underline">Canvas Editor</p>
-              <p className="text-xs text-gray-400 mt-1">Design stickers and graphics</p>
+              <p className="text-sm font-medium group-hover:underline">Categories</p>
+              <p className="text-xs text-gray-400 mt-1">Create and manage product categories</p>
+            </Link>
+            <Link
+              href="/admin/products"
+              className="border border-gray-100 rounded-lg p-5 hover:border-gray-300 hover:shadow-sm transition-all group"
+            >
+              <p className="text-sm font-medium group-hover:underline">Products</p>
+              <p className="text-xs text-gray-400 mt-1">Add products with images, videos & pricing</p>
             </Link>
           </div>
         </div>

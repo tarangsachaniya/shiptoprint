@@ -6,18 +6,17 @@ export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id, canvasData, w, h, shape } = await req.json();
+  const { id, imageUrl, w, h, shape } = await req.json();
 
-  if (!canvasData || !w || !h || !shape) {
+  if (!imageUrl || !w || !h || !shape) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
   if (id) {
-    // Update — verify ownership before updating
     const { data, error } = await supabaseAdmin
       .from("designs")
       .update({
-        canvas_data:  canvasData,
+        image_url:    imageUrl,
         canvas_w:     w,
         canvas_h:     h,
         canvas_shape: shape,
@@ -35,12 +34,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ id: data.id });
   }
 
-  // Insert new
   const { data, error } = await supabaseAdmin
     .from("designs")
     .insert({
       user_id:      session.userId,
-      canvas_data:  canvasData,
+      image_url:    imageUrl,
       canvas_w:     w,
       canvas_h:     h,
       canvas_shape: shape,
@@ -61,7 +59,7 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from("designs")
-    .select("id, canvas_w, canvas_h, canvas_shape, created_at, updated_at")
+    .select("id, image_url, canvas_w, canvas_h, canvas_shape, created_at, updated_at")
     .eq("user_id", session.userId)
     .order("updated_at", { ascending: false });
 
