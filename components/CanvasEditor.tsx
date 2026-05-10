@@ -7,7 +7,7 @@ import {
 import * as fabric from 'fabric';
 import {
   ArrowLeft, Download, ImageIcon, Loader2,
-  Palette, Redo2, Save, Trash2, Type, Undo2,
+  Palette, Redo2, RefreshCw, Save, Scissors, Trash2, Type, Undo2, X,
 } from 'lucide-react';
 
 /* ─── types ─────────────────────────────────────────────────── */
@@ -30,8 +30,8 @@ const fromPx = (px: number, u: Unit) => +((px / UNIT_PX[u]).toFixed(2));
 
 function setClip(canvas: fabric.Canvas, w: number, h: number, type: StickerType) {
   if (type !== 'circle') { canvas.clipPath = undefined; return; }
-  canvas.clipPath = new fabric.Circle({
-    radius: Math.min(w, h) / 2,
+  canvas.clipPath = new fabric.Ellipse({
+    rx: w / 2, ry: h / 2,
     left: w / 2, top: h / 2,
     originX: 'center', originY: 'center',
     absolutePositioned: true,
@@ -59,7 +59,8 @@ export default function CanvasEditor() {
   const skip      = useRef(false);
   const typeRef   = useRef<StickerType>('circle');
   const unitRef   = useRef<Unit>('in');
-  const designId  = useRef<string | null>(null);
+  const designId       = useRef<string | null>(null);
+  const curveSourceRef = useRef<fabric.IText | null>(null);
 
   /* sticker config */
   const [stickerType, setStickerType] = useState<StickerType>('circle');
@@ -84,6 +85,19 @@ export default function CanvasEditor() {
   const [isSaving,     setIsSaving]     = useState(false);
   const [saveLbl,      setSaveLbl]      = useState<'save' | 'saved' | 'error'>('save');
   const [imgUploading, setImgUploading] = useState(false);
+
+  /* die-cut border */
+  const [dieCutColor, setDieCutColor] = useState('#ff0000');
+  const [showDieCut,  setShowDieCut]  = useState(false);
+
+  /* curved text */
+  const [showCurve,      setShowCurve]      = useState(false);
+  const [curveText,      setCurveText]      = useState('My Text');
+  const [curveFontSize,  setCurveFontSize]  = useState(28);
+  const [curveRadius,    setCurveRadius]    = useState(140);
+  const [curveColor,     setCurveColor]     = useState('#111111');
+  const [curveDir,       setCurveDir]       = useState<'top' | 'bottom'>('top');
+  const [curveScale,     setCurveScale]     = useState(1);
 
   /* ════ history ════════════════════════════════════════════════ */
 
@@ -157,8 +171,9 @@ export default function CanvasEditor() {
     if (!fc.current) return;
     const w  = fc.current.width!, h = fc.current.height!;
     const sq = Math.min(w, h);
-    const fw = t !== 'rect' ? sq : w;
-    const fh = t !== 'rect' ? sq : h;
+    // square forces equal sides; circle/oval and rect keep current dims
+    const fw = t === 'square' ? sq : w;
+    const fh = t === 'square' ? sq : h;
     fc.current.setDimensions({ width: fw, height: fh });
     setClip(fc.current, fw, fh, t);
     fc.current.renderAll();
@@ -179,14 +194,14 @@ export default function CanvasEditor() {
     const u  = unitRef.current;
     const t  = typeRef.current;
     const fw = toPx(wv, u);
-    const fh = t === 'rect' ? (isNaN(hv) || hv <= 0 ? fw : toPx(hv, u)) : fw;
+    // square forces W=H; circle and rect allow independent H
+    const fh = t === 'square' ? fw : (isNaN(hv) || hv <= 0 ? fw : toPx(hv, u));
     fc.current.setDimensions({ width: fw, height: fh });
     setClip(fc.current, fw, fh, t);
     fc.current.renderAll();
     setCw(fw); setCh(fh);
     setInputW(String(fromPx(fw, u)));
-    if (t === 'rect') setInputH(String(fromPx(fh, u)));
-    else              setInputH(String(fromPx(fw, u)));
+    setInputH(String(fromPx(fh, u)));
     pushHist();
   }, [inputW, inputH, pushHist]);
 
@@ -271,6 +286,77 @@ export default function CanvasEditor() {
     fc.current.renderAll(); pushHist();
   }, [pushHist]);
 
+  const openCurveModal = () => {
+    const active = fc.current?.getActiveObject();
+    if (active instanceof fabric.IText) {
+      curveSourceRef.current = active;
+      setCurveText(active.text ?? 'My Text');
+      const fill = active.fill;
+      if (typeof fill === 'string') setCurveColor(fill);
+      if (active.fontSize) setCurveFontSize(active.fontSize);
+    } else {
+      curveSourceRef.current = null;
+    }
+    setShowCurve(true);
+  };
+
+  const addCurvedText = () => {
+    const cv = fc.current;
+    if (!cv || !curveText.trim()) return;
+    const fw = cv.width!, fh = cv.height!;
+    const src = curveSourceRef.current;
+
+    // place at source position if converting existing text, else canvas center
+    const cx = (src?.left != null) ? src.left : fw / 2;
+    const cy = (src?.top  != null) ? src.top  : fh / 2;
+
+    const tmp = document.createElement('canvas');
+    const ctx2d = tmp.getContext('2d')!;
+    ctx2d.font = `${curveFontSize}px Arial`;
+
+    const chars = curveText.split('');
+    const spacing = curveFontSize * 0.05;
+    const widths = chars.map(c => Math.max(ctx2d.measureText(c).width, curveFontSize * 0.25));
+    const totalLen = widths.reduce((a, b) => a + b, 0) + spacing * Math.max(0, chars.length - 1);
+    const totalAngle = totalLen / curveRadius;
+
+    let accum = 0;
+    const objs = chars.map((char, i) => {
+      const hw = widths[i];
+      const θ = -totalAngle / 2 + (accum + hw / 2) / curveRadius;
+      accum += hw + spacing;
+
+      const x   = Math.sin(θ) * curveRadius;
+      const y   = curveDir === 'top' ? -Math.cos(θ) * curveRadius : Math.cos(θ) * curveRadius;
+      const rot = curveDir === 'top' ? θ * 180 / Math.PI : θ * 180 / Math.PI + 180;
+
+      return new fabric.FabricText(char, {
+        left: x, top: y,
+        originX: 'center', originY: 'center',
+        angle: rot,
+        fontSize: curveFontSize,
+        fill: curveColor,
+        fontFamily: 'Arial, sans-serif',
+        selectable: false,
+      });
+    });
+
+    // remove original text if converting
+    if (src && cv.contains(src)) cv.remove(src);
+    curveSourceRef.current = null;
+
+    const group = new fabric.Group(objs, {
+      left: cx, top: cy,
+      originX: 'center', originY: 'center',
+      scaleX: curveScale, scaleY: curveScale,
+    });
+
+    cv.add(group);
+    cv.setActiveObject(group);
+    cv.renderAll();
+    setShowCurve(false);
+  };
+
   const undo = useCallback(async () => { await jumpTo(histIdx.current - 1); }, [jumpTo]);
   const redo = useCallback(async () => { await jumpTo(histIdx.current + 1); }, [jumpTo]);
 
@@ -343,13 +429,18 @@ export default function CanvasEditor() {
   const hexInvalid   = hexInput !== bg;
   const physW        = fromPx(cw, unit);
   const physH        = fromPx(ch, unit);
-  const sizeLabel    = stickerType === 'circle'
+  const sizeLabel    = stickerType === 'square'
+    ? `${physW} ${unit}`
+    : stickerType === 'circle' && cw === ch
     ? `Ø ${physW} ${unit}`
     : `${physW} × ${physH} ${unit}`;
 
   const canvasWrap   = stickerType === 'circle'
     ? { borderRadius: '50%' }
     : {};
+
+  // die-cut: always 0.5 mm offset, shown as CSS box-shadow ring outside canvas
+  const dieCutPx = Math.max(2, Math.round(0.5 * DPI / 25.4));
 
   const saveCls =
     saveLbl === 'saved' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' :
@@ -390,19 +481,17 @@ export default function CanvasEditor() {
             <div className="h-4 w-px bg-gray-200" />
 
             <div className="flex items-center gap-1.5">
-              {stickerType === 'rect' ? (
+              {stickerType === 'square' ? (
+                <>
+                  <span className="text-[10px] text-gray-400">Size</span>
+                  <SizeInput value={inputW} onChange={(v) => { setInputW(v); setInputH(v); }} onEnter={onEnter} onBlur={applySize} />
+                </>
+              ) : (
                 <>
                   <span className="text-[10px] text-gray-400">W</span>
                   <SizeInput value={inputW} onChange={setInputW} onEnter={onEnter} onBlur={applySize} />
                   <span className="text-[10px] text-gray-400">H</span>
                   <SizeInput value={inputH} onChange={setInputH} onEnter={onEnter} onBlur={applySize} />
-                </>
-              ) : (
-                <>
-                  <span className="text-[10px] text-gray-400">
-                    {stickerType === 'circle' ? 'Ø' : 'Size'}
-                  </span>
-                  <SizeInput value={inputW} onChange={(v) => { setInputW(v); setInputH(v); }} onEnter={onEnter} onBlur={applySize} />
                 </>
               )}
               <select value={unit} onChange={(e) => changeUnit(e.target.value as Unit)}
@@ -459,19 +548,17 @@ export default function CanvasEditor() {
           <div className="h-4 w-px bg-gray-200 shrink-0 self-center" />
 
           <div className="flex shrink-0 items-center gap-1">
-            {stickerType === 'rect' ? (
+            {stickerType === 'square' ? (
+              <>
+                <span className="text-[10px] text-gray-400">S</span>
+                <SizeInput value={inputW} onChange={(v) => { setInputW(v); setInputH(v); }} onEnter={onEnter} onBlur={applySize} />
+              </>
+            ) : (
               <>
                 <span className="text-[10px] text-gray-400">W</span>
                 <SizeInput value={inputW} onChange={setInputW} onEnter={onEnter} onBlur={applySize} />
                 <span className="text-[10px] text-gray-400">H</span>
                 <SizeInput value={inputH} onChange={setInputH} onEnter={onEnter} onBlur={applySize} />
-              </>
-            ) : (
-              <>
-                <span className="text-[10px] text-gray-400">
-                  {stickerType === 'circle' ? 'Ø' : 'S'}
-                </span>
-                <SizeInput value={inputW} onChange={(v) => { setInputW(v); setInputH(v); }} onEnter={onEnter} onBlur={applySize} />
               </>
             )}
             <select value={unit} onChange={(e) => changeUnit(e.target.value as Unit)}
@@ -512,6 +599,9 @@ export default function CanvasEditor() {
           />
           <input ref={fileInput} type="file" accept="image/*" className="hidden" onChange={uploadImage} />
 
+          <SideBtn onClick={openCurveModal} icon={<RefreshCw size={20} />} label="Curve" />
+          <SideBtn onClick={() => setShowDieCut(true)} icon={<Scissors size={20} />} label="Border" />
+
           <div className="hidden md:my-1 md:block md:h-px md:w-10 md:bg-gray-100" />
 
           <SideBtn onClick={deleteSelected} icon={<Trash2 size={20} />} label="Delete" disabled={!hasSel} danger />
@@ -534,7 +624,11 @@ export default function CanvasEditor() {
               className="overflow-hidden transition-all duration-200"
               style={{
                 ...canvasWrap,
-                boxShadow: '0 4px 6px -1px rgb(0 0 0/.08), 0 20px 40px -8px rgb(0 0 0/.18)',
+                boxShadow: [
+                  dieCutPx > 0 && `0 0 0 ${dieCutPx}px ${dieCutColor}`,
+                  '0 4px 6px -1px rgb(0 0 0/.08)',
+                  '0 20px 40px -8px rgb(0 0 0/.18)',
+                ].filter(Boolean).join(', '),
                 backgroundImage:
                   'linear-gradient(45deg,#d1d5db 25%,transparent 25%),' +
                   'linear-gradient(-45deg,#d1d5db 25%,transparent 25%),' +
@@ -556,10 +650,151 @@ export default function CanvasEditor() {
         </main>
       </div>
 
+      {/* ── Curved Text Modal ───────────────────────────────── */}
+      {showCurve && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setShowCurve(false)} />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <h3 className="text-sm font-semibold">Curved Text</h3>
+              <button onClick={() => setShowCurve(false)} className="text-gray-400 hover:text-gray-700">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              {/* text */}
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">Text</span>
+                <input
+                  value={curveText}
+                  onChange={e => setCurveText(e.target.value)}
+                  placeholder="Your curved text…"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
+                />
+              </label>
+
+              {/* font size + radius */}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs text-gray-500">Font size (px)</span>
+                  <input
+                    type="number" min="8" max="120" value={curveFontSize}
+                    onChange={e => setCurveFontSize(Number(e.target.value))}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs text-gray-500">Radius (px)</span>
+                  <input
+                    type="number" min="20" max="600" value={curveRadius}
+                    onChange={e => setCurveRadius(Number(e.target.value))}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
+                  />
+                </label>
+              </div>
+
+              {/* scale */}
+              <label className="block">
+                <span className="mb-1 flex items-center justify-between text-xs text-gray-500">
+                  <span>Scale</span>
+                  <span className="font-mono text-gray-700">{Math.round(curveScale * 100)}%</span>
+                </span>
+                <input
+                  type="range" min="0.25" max="3" step="0.05" value={curveScale}
+                  onChange={e => setCurveScale(Number(e.target.value))}
+                  className="w-full accent-gray-900"
+                />
+              </label>
+
+              {/* color */}
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">Color</span>
+                <div className="flex items-center gap-2">
+                  <label className="cursor-pointer">
+                    <span className="block h-8 w-8 rounded-lg border border-gray-200" style={{ background: curveColor }} />
+                    <input type="color" value={curveColor} onChange={e => setCurveColor(e.target.value)} className="sr-only" />
+                  </label>
+                  <input
+                    type="text" value={curveColor} maxLength={7} spellCheck={false}
+                    onChange={e => setCurveColor(e.target.value)}
+                    className="w-24 rounded-lg border border-gray-200 px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-gray-300"
+                  />
+                </div>
+              </label>
+
+              {/* direction */}
+              <div>
+                <span className="mb-1 block text-xs text-gray-500">Direction</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setCurveDir('top')}
+                    className={`flex-1 rounded-lg border py-2 text-xs transition-colors ${curveDir === 'top' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-600 hover:border-gray-400'}`}
+                  >
+                    ⌢ Curve Up
+                  </button>
+                  <button
+                    onClick={() => setCurveDir('bottom')}
+                    className={`flex-1 rounded-lg border py-2 text-xs transition-colors ${curveDir === 'bottom' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-600 hover:border-gray-400'}`}
+                  >
+                    ⌣ Curve Down
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={addCurvedText}
+                disabled={!curveText.trim()}
+                className="w-full rounded-xl bg-black py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Add to Canvas
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Die-Cut Border Modal ────────────────────────────── */}
+      {showDieCut && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setShowDieCut(false)} />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-72 rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <h3 className="text-sm font-semibold">Die-Cut Border</h3>
+              <button onClick={() => setShowDieCut(false)} className="text-gray-400 hover:text-gray-700">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              <p className="text-xs text-gray-500">
+                Die-cut line is always visible — fixed 0.5 mm outside the sticker boundary.
+              </p>
+
+              {/* color */}
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">Line color</span>
+                <div className="flex items-center gap-2">
+                  <label className="cursor-pointer">
+                    <span className="block h-8 w-8 rounded-lg border border-gray-200" style={{ background: dieCutColor }} />
+                    <input type="color" value={dieCutColor} onChange={e => setDieCutColor(e.target.value)} className="sr-only" />
+                  </label>
+                  <input
+                    type="text" value={dieCutColor} maxLength={7} spellCheck={false}
+                    onChange={e => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) setDieCutColor(e.target.value); }}
+                    className="w-24 rounded-lg border border-gray-200 px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-gray-300"
+                  />
+                </div>
+              </label>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── Status bar — hidden on small screens ────────────── */}
       <footer className="hidden sm:flex shrink-0 items-center justify-between border-t border-gray-100 bg-white px-5 py-1">
         <span className={`text-[10px] font-medium ${isSaved ? 'text-emerald-600' : 'text-gray-400'}`}>
-          {isSaved ? '✓ Saved to database' : 'Unsaved changes — click Save to persist'}
+          {isSaved ? '✓ Saved' : 'Unsaved changes — click Save to persist'}
         </span>
         <span className="text-[10px] text-gray-300">
           Double-click text to edit &ensp;·&ensp; Del — delete &ensp;·&ensp; Ctrl+Z — undo &ensp;·&ensp; Ctrl+Shift+Z — redo

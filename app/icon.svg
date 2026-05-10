@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Black rounded square (sticker shape) -->
+  <rect width="32" height="32" rx="8" fill="#0f0f0f"/>
+  <!-- 4-pointed sparkle star — represents design + print -->
+  <path d="M16 4 L18.8 13.2 L28 16 L18.8 18.8 L16 28 L13.2 18.8 L4 16 L13.2 13.2 Z" fill="white"/>
+  <!-- Small dot accent in center for depth -->
+  <circle cx="16" cy="16" r="2" fill="#0f0f0f"/>
+</svg>
