@@ -7,6 +7,18 @@ const slugify = (s: string) =>
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const categoryId = searchParams.get('category_id');
+  const slug       = searchParams.get('slug');
+
+  if (slug) {
+    const { data, error } = await supabaseAdmin
+      .from('products')
+      .select('*, categories(name, slug)')
+      .eq('slug', slug)
+      .single();
+
+    if (error || !data) return Response.json({ error: 'Product not found' }, { status: 404 });
+    return Response.json(data);
+  }
 
   let query = supabaseAdmin
     .from('products')
@@ -37,10 +49,7 @@ export async function POST(req: Request) {
   const { category_id, name, description, price, min_qty = 1, sizes = [], media = [] } = body;
 
   if (!category_id || !name?.trim() || price == null)
-    return Response.json(
-      { error: 'category_id, name, and price are required' },
-      { status: 400 },
-    );
+    return Response.json({ error: 'category_id, name, and price are required' }, { status: 400 });
 
   const { data, error } = await supabaseAdmin
     .from('products')

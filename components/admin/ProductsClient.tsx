@@ -1,8 +1,11 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, Loader2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
+import { Loader2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 
 interface MediaItem { url: string; type: 'image' | 'video' }
 interface Category  { id: string; name: string; slug: string }
@@ -23,23 +26,22 @@ export default function ProductsClient({
   categories,
 }: {
   initialProducts: Product[];
-  categories: Category[];
+  categories:      Category[];
 }) {
-  const [products,    setProducts]    = useState(initialProducts);
-  const [form,        setForm]        = useState(EMPTY);
-  const [editId,      setEditId]      = useState<string | null>(null);
-  const [showForm,    setShowForm]    = useState(false);
-  const [sizeInput,   setSizeInput]   = useState('');
-  const [uploading,   setUploading]   = useState(false);
-  const [saving,      setSaving]      = useState(false);
-  const [error,       setError]       = useState('');
-  const [dragging,    setDragging]    = useState(false);
+  const [products,  setProducts]  = useState(initialProducts);
+  const [form,      setForm]      = useState(EMPTY);
+  const [editId,    setEditId]    = useState<string | null>(null);
+  const [showForm,  setShowForm]  = useState(false);
+  const [sizeInput, setSizeInput] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [saving,    setSaving]    = useState(false);
+  const [dragging,  setDragging]  = useState(false);
   const dropRef = useRef<HTMLInputElement>(null);
 
+  /* ── helpers ── */
   function openCreate() {
     setEditId(null);
     setForm({ ...EMPTY, category_id: categories[0]?.id ?? '' });
-    setError('');
     setShowForm(true);
   }
 
@@ -50,7 +52,6 @@ export default function ProductsClient({
       description: p.description ?? '', price: String(p.price),
       min_qty: String(p.min_qty), sizes: [...p.sizes], media: [...p.media],
     });
-    setError('');
     setShowForm(true);
   }
 
@@ -68,320 +69,328 @@ export default function ProductsClient({
       fd.append('file', file);
       const res = await fetch('/api/upload', { method: 'POST', body: fd });
       if (!res.ok) return;
-      const { url } = (await res.json()) as { url: string };
+      const { url } = await res.json() as { url: string };
       setForm(f => ({ ...f, media: [...f.media, { url, type }] }));
-    } finally {
-      setUploading(false);
-    }
+    } finally { setUploading(false); }
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.category_id || !form.name.trim() || !form.price) {
-      setError('Category, name, and price are required');
+      toast.error('Category, name, and price are required');
       return;
     }
-    setSaving(true); setError('');
+    setSaving(true);
     try {
       const payload = {
-        category_id:  form.category_id,
-        name:         form.name.trim(),
-        description:  form.description.trim() || null,
-        price:        parseFloat(form.price),
-        min_qty:      parseInt(form.min_qty) || 1,
-        sizes:        form.sizes,
-        media:        form.media,
+        category_id: form.category_id, name: form.name.trim(),
+        description: form.description.trim() || null,
+        price: parseFloat(form.price), min_qty: parseInt(form.min_qty) || 1,
+        sizes: form.sizes, media: form.media,
       };
       const res = editId
-        ? await fetch(`/api/products/${editId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          })
-        : await fetch('/api/products', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
+        ? await fetch(`/api/products/${editId}`, { method: 'PUT',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        : await fetch('/api/products',            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const json = await res.json();
-      if (!res.ok) { setError(json.error); return; }
+      if (!res.ok) { toast.error(json.error ?? 'Failed to save product'); return; }
       setProducts(prev =>
-        editId
-          ? prev.map(p => (p.id === editId ? json : p))
-          : [...prev, json],
+        editId ? prev.map(p => p.id === editId ? json : p) : [...prev, json]
       );
       setShowForm(false);
-    } finally {
-      setSaving(false);
-    }
+      toast.success(editId ? `"${json.name}" updated` : `"${json.name}" created`);
+    } catch {
+      toast.error('Network error — please try again');
+    } finally { setSaving(false); }
   }
 
   async function del(id: string) {
-    if (!confirm('Delete this product?')) return;
-    await fetch(`/api/products/${id}`, { method: 'DELETE' });
-    setProducts(prev => prev.filter(p => p.id !== id));
+    const product = products.find(p => p.id === id);
+    if (!confirm(`Delete "${product?.name}"?`)) return;
+    try {
+      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+      if (!res.ok) { const j = await res.json(); toast.error(j.error ?? 'Failed to delete'); return; }
+      setProducts(prev => prev.filter(p => p.id !== id));
+      toast.success(`"${product?.name}" deleted`);
+    } catch {
+      toast.error('Network error — please try again');
+    }
   }
 
-  /* group products by category */
-  const groups = categories
-    .map(cat => ({ ...cat, items: products.filter(p => p.category_id === cat.id) }))
-    .filter(g => g.items.length > 0);
-
+  /* ── render ── */
   return (
-    <div className="max-w-4xl mx-auto px-6 py-10">
-      {/* header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-2 text-xs">
-          <Link href="/admin" className="flex items-center gap-1 text-gray-400 hover:text-gray-700">
-            <ArrowLeft size={13} /> Admin
-          </Link>
-          <span className="text-gray-300">/</span>
-          <span className="font-medium text-gray-700">Products</span>
+    <div className="p-8">
+      {/* Page header */}
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Products</h1>
+          <p className="text-sm text-gray-500 mt-1">{products.length} product{products.length !== 1 ? 's' : ''}</p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-1.5 bg-black text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-800"
-        >
-          <Plus size={14} /> Add Product
-        </button>
+        <Button onClick={openCreate} className="flex items-center gap-1.5">
+          <Plus size={15} /> Add Product
+        </Button>
       </div>
 
-      {/* product list */}
-      {products.length === 0 && (
-        <p className="text-sm text-gray-400 py-16 text-center">
-          No products yet — click &quot;Add Product&quot; to get started.
-        </p>
-      )}
-
-      {groups.map(group => (
-        <div key={group.id} className="mb-8">
-          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-3">
-            {group.name}
-          </h2>
-          <div className="space-y-2">
-            {group.items.map(p => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between border border-gray-100 rounded-xl px-4 py-3 hover:border-gray-200 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  {p.media[0] && (
-                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 shrink-0">
-                      {p.media[0].type === 'video'
-                        ? <video src={p.media[0].url} className="w-full h-full object-cover" muted />
-                        : <img src={p.media[0].url} className="w-full h-full object-cover" alt="" />}
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-sm font-medium">{p.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      ${p.price} &nbsp;·&nbsp; min {p.min_qty} &nbsp;·&nbsp; {p.sizes.length} sizes &nbsp;·&nbsp; {p.media.length} media
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => openEdit(p)} className="p-2 text-gray-400 hover:text-gray-700 transition-colors">
-                    <Pencil size={14} />
-                  </button>
-                  <button onClick={() => del(p.id)} className="p-2 text-gray-300 hover:text-red-500 transition-colors">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
+      {/* Table */}
+      <div className="bg-white border border-gray-100 rounded-xl shadow-soft overflow-hidden">
+        {products.length === 0 ? (
+          <div className="py-16 text-center">
+            <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                <line x1="7" y1="7" x2="7.01" y2="7" />
+              </svg>
+            </div>
+            <p className="text-sm text-gray-400 mb-4">No products yet.</p>
+            <Button onClick={openCreate} variant="outline" size="sm">Add first product</Button>
           </div>
-        </div>
-      ))}
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50/80">
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-10" />
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Product</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Category</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Price</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Min Qty</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Sizes</th>
+                <th className="text-right px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map(p => {
+                const thumb = p.media[0];
+                const cat   = categories.find(c => c.id === p.category_id);
+                return (
+                  <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                    {/* Thumbnail */}
+                    <td className="px-5 py-3">
+                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                        {thumb ? (
+                          thumb.type === 'video'
+                            ? <video src={thumb.url} className="w-full h-full object-cover" muted />
+                            : <img  src={thumb.url} className="w-full h-full object-cover" alt="" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <svg className="w-4 h-4 text-gray-300" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1">
+                              <rect x="2" y="2" width="12" height="12" rx="1.5" />
+                              <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
+                              <path d="M2 10l3.5-3.5L8 9l2.5-2.5L14 10" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    </td>
 
-      {/* ── slide-over form ── */}
+                    {/* Name + slug */}
+                    <td className="px-5 py-3">
+                      <p className="font-medium text-gray-900">{p.name}</p>
+                      <p className="text-xs text-gray-400 font-mono mt-0.5">/{p.slug}</p>
+                    </td>
+
+                    {/* Category */}
+                    <td className="px-5 py-3 hidden md:table-cell">
+                      {cat ? (
+                        <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
+                    </td>
+
+                    {/* Price */}
+                    <td className="px-5 py-3 hidden sm:table-cell">
+                      <span className="font-semibold text-gray-900">₹{Number(p.price).toFixed(2)}</span>
+                    </td>
+
+                    {/* Min Qty */}
+                    <td className="px-5 py-3 hidden lg:table-cell text-gray-600">{p.min_qty}</td>
+
+                    {/* Sizes */}
+                    <td className="px-5 py-3 hidden lg:table-cell">
+                      {p.sizes.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {p.sizes.slice(0, 3).map(s => (
+                            <Badge key={s} variant="outline" className="text-xs font-normal">{s}</Badge>
+                          ))}
+                          {p.sizes.length > 3 && (
+                            <Badge variant="muted" className="text-xs">+{p.sizes.length - 3}</Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-5 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => openEdit(p)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-all font-medium"
+                        >
+                          <Pencil size={13} /> Edit
+                        </button>
+                        <button
+                          onClick={() => del(p.id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-red-400 hover:text-red-600 hover:bg-red-50 transition-all font-medium"
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ── Slide-over form (unchanged logic) ── */}
       {showForm && (
         <>
-          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setShowForm(false)} />
-          <div className="fixed right-0 top-0 bottom-0 w-full sm:w-1/2 bg-white z-50 shadow-2xl overflow-y-auto">
+          <div className="fixed inset-0 bg-black/25 z-40" onClick={() => setShowForm(false)} />
+          <div className="fixed right-0 top-0 bottom-0 w-full sm:w-[480px] bg-white z-50 shadow-2xl overflow-y-auto">
 
             <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold">
+              <h2 className="text-sm font-semibold text-gray-900">
                 {editId ? 'Edit Product' : 'New Product'}
               </h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-700">
+              <button onClick={() => setShowForm(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={submit} className="px-6 py-6 space-y-5">
 
-              {/* category */}
-              <label className="block">
-                <span className="block text-xs font-medium text-gray-600 mb-1.5">Category *</span>
+              {/* Category */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600">Category *</label>
                 <select
                   value={form.category_id}
                   onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black transition-colors"
                 >
                   <option value="">Select category</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-              </label>
+              </div>
 
-              {/* name */}
-              <label className="block">
-                <span className="block text-xs font-medium text-gray-600 mb-1.5">Name *</span>
-                <input
+              {/* Name */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600">Name *</label>
+                <Input
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="Product name"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
                 />
-              </label>
+              </div>
 
-              {/* description */}
-              <label className="block">
-                <span className="block text-xs font-medium text-gray-600 mb-1.5">Description</span>
+              {/* Description */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600">Description</label>
                 <textarea
                   value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                   rows={3}
                   placeholder="Optional description…"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 resize-none"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black transition-colors resize-none"
                 />
-              </label>
-
-              {/* price + min qty */}
-              <div className="grid grid-cols-2 gap-4">
-                <label className="block">
-                  <span className="block text-xs font-medium text-gray-600 mb-1.5">Price ($) *</span>
-                  <input
-                    type="number" min="0" step="0.01"
-                    value={form.price}
-                    onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
-                    placeholder="0.00"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-                  />
-                </label>
-                <label className="block">
-                  <span className="block text-xs font-medium text-gray-600 mb-1.5">Min Quantity</span>
-                  <input
-                    type="number" min="1" step="1"
-                    value={form.min_qty}
-                    onChange={e => setForm(f => ({ ...f, min_qty: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-                  />
-                </label>
               </div>
 
-              {/* sizes */}
-              <div>
-                <span className="block text-xs font-medium text-gray-600 mb-1.5">Sizes</span>
+              {/* Price + Min Qty */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-gray-600">Price (₹) *</label>
+                  <Input type="number" min="0" step="0.01" value={form.price}
+                    onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="0.00" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-gray-600">Min Quantity</label>
+                  <Input type="number" min="1" step="1" value={form.min_qty}
+                    onChange={e => setForm(f => ({ ...f, min_qty: e.target.value }))} />
+                </div>
+              </div>
+
+              {/* Sizes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600">Sizes</label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {form.sizes.map(s => (
                     <span key={s} className="flex items-center gap-1 bg-gray-100 text-xs rounded-md px-2 py-1">
                       {s}
-                      <button
-                        type="button"
-                        onClick={() => setForm(f => ({ ...f, sizes: f.sizes.filter(x => x !== s) }))}
-                        className="text-gray-400 hover:text-gray-700"
-                      >
+                      <button type="button" onClick={() => setForm(f => ({ ...f, sizes: f.sizes.filter(x => x !== s) }))}
+                        className="text-gray-400 hover:text-gray-700">
                         <X size={10} />
                       </button>
                     </span>
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <input
-                    value={sizeInput}
-                    onChange={e => setSizeInput(e.target.value)}
+                  <Input value={sizeInput} onChange={e => setSizeInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSize(); } }}
-                    placeholder='e.g. "2×2 inches"'
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-                  />
-                  <button
-                    type="button" onClick={addSize}
-                    className="border border-gray-200 text-gray-600 px-3 py-2 rounded-lg text-xs hover:border-gray-400"
-                  >
-                    <Plus size={13} />
-                  </button>
+                    placeholder='e.g. "2×2 inches"' />
+                  <Button type="button" variant="outline" size="icon" onClick={addSize}>
+                    <Plus size={14} />
+                  </Button>
                 </div>
               </div>
 
-              {/* media */}
-              <div>
-                <span className="block text-xs font-medium text-gray-600 mb-1.5">Media</span>
+              {/* Media */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600">Media</label>
                 {form.media.length > 0 && (
                   <div className="grid grid-cols-4 gap-2 mb-2">
                     {form.media.map((m, i) => (
                       <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100 group">
                         {m.type === 'video'
                           ? <video src={m.url} className="w-full h-full object-cover" muted />
-                          : <img src={m.url} className="w-full h-full object-cover" alt="" />}
-                        <button
-                          type="button"
+                          : <img   src={m.url} className="w-full h-full object-cover" alt="" />}
+                        <button type="button"
                           onClick={() => setForm(f => ({ ...f, media: f.media.filter((_, j) => j !== i) }))}
-                          className="absolute top-1 right-1 bg-white/90 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
+                          className="absolute top-1 right-1 bg-white/90 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                           <X size={10} />
                         </button>
-                        <span className="absolute bottom-1 left-1 text-[9px] bg-black/60 text-white rounded px-1 py-0.5">
-                          {m.type}
-                        </span>
+                        <span className="absolute bottom-1 left-1 text-[9px] bg-black/60 text-white rounded px-1 py-0.5">{m.type}</span>
                       </div>
                     ))}
                   </div>
                 )}
-                {/* drag-drop zone */}
                 <div
                   onClick={() => !uploading && dropRef.current?.click()}
                   onDragOver={e => { e.preventDefault(); setDragging(true); }}
                   onDragLeave={() => setDragging(false)}
                   onDrop={async e => {
                     e.preventDefault(); setDragging(false);
-                    const files = Array.from(e.dataTransfer.files);
-                    for (const f of files) {
+                    for (const f of Array.from(e.dataTransfer.files))
                       await uploadMedia(f, f.type.startsWith('video/') ? 'video' : 'image');
-                    }
                   }}
                   className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed py-6 cursor-pointer transition-colors select-none ${
-                    dragging
-                      ? 'border-gray-400 bg-gray-50'
-                      : uploading
-                      ? 'border-gray-200 opacity-60 cursor-not-allowed'
-                      : 'border-gray-200 hover:border-gray-400 hover:bg-gray-50'
-                  }`}
+                    dragging   ? 'border-gray-400 bg-gray-50'
+                    : uploading ? 'border-gray-200 opacity-60 cursor-not-allowed'
+                    : 'border-gray-200 hover:border-gray-400 hover:bg-gray-50'}`}
                 >
                   {uploading
                     ? <Loader2 size={20} className="animate-spin text-gray-400" />
-                    : <Upload size={20} className="text-gray-400" />}
+                    : <Upload  size={20} className="text-gray-400" />}
                   <p className="text-xs text-gray-500 font-medium">
-                    {uploading ? 'Uploading…' : 'Drop files here or click to browse'}
+                    {uploading ? 'Uploading…' : 'Drop files or click to browse'}
                   </p>
                   <p className="text-[10px] text-gray-400">PNG · JPG · GIF · WebP · MP4 · MOV</p>
                 </div>
-                <input
-                  ref={dropRef} type="file" accept="image/*,video/*" multiple className="hidden"
+                <input ref={dropRef} type="file" accept="image/*,video/*" multiple className="hidden"
                   onChange={async e => {
-                    const files = Array.from(e.target.files ?? []);
-                    for (const f of files) {
+                    for (const f of Array.from(e.target.files ?? []))
                       await uploadMedia(f, f.type.startsWith('video/') ? 'video' : 'image');
-                    }
                     e.target.value = '';
                   }}
                 />
               </div>
 
-              {error && <p className="text-xs text-red-500">{error}</p>}
-
               <div className="flex gap-3 pt-2 border-t border-gray-100">
-                <button
-                  type="submit" disabled={saving}
-                  className="flex-1 bg-black text-white text-sm py-2.5 rounded-lg hover:bg-gray-800 disabled:opacity-50"
-                >
+                <Button type="submit" disabled={saving} className="flex-1">
                   {saving ? 'Saving…' : editId ? 'Save Changes' : 'Create Product'}
-                </button>
-                <button
-                  type="button" onClick={() => setShowForm(false)}
-                  className="border border-gray-200 text-gray-700 text-sm px-4 py-2.5 rounded-lg hover:border-gray-400"
-                >
-                  Cancel
-                </button>
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
               </div>
             </form>
           </div>

@@ -1,9 +1,13 @@
 import { getSession } from "@/lib/session";
-import { redirect } from "next/navigation";
 import CanvasEditor from "@/components/CanvasEditor";
+import DesignAuthGuard from "@/components/DesignAuthGuard";
 
 export default async function DesignPage() {
   const session = await getSession();
-  if (!session) redirect("/");
-  return <CanvasEditor />;
+
+  return (
+    <div className="min-h-screen bg-white">
+      {session ? <CanvasEditor /> : <DesignAuthGuard />}
+    </div>
+  );
 }

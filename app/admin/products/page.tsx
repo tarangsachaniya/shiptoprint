@@ -1,7 +1,6 @@
 import { getSession } from '@/lib/session';
 import { redirect } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase/client';
-import Navbar from '@/components/Navbar';
 import ProductsClient from '@/components/admin/ProductsClient';
 
 export default async function ProductsPage() {
@@ -20,12 +19,9 @@ export default async function ProductsPage() {
   ]);
 
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar user={{ email: session.email, role: session.role }} />
-      <ProductsClient
-        initialProducts={products ?? []}
-        categories={categories ?? []}
-      />
-    </div>
+    <ProductsClient
+      initialProducts={products ?? []}
+      categories={categories ?? []}
+    />
   );
 }

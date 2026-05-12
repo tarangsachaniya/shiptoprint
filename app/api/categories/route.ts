@@ -4,11 +4,26 @@ import { getSession } from '@/lib/session';
 const slugify = (s: string) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const slug = searchParams.get('slug');
+
+  if (slug) {
+    const { data, error } = await supabaseAdmin
+      .from('categories')
+      .select('id, name, slug, products(id, name, slug, price, description, min_qty, sizes, media)')
+      .eq('slug', slug)
+      .single();
+
+    if (error || !data) return Response.json({ error: 'Category not found' }, { status: 404 });
+    return Response.json(data);
+  }
+
   const { data } = await supabaseAdmin
     .from('categories')
     .select('id, name, slug, created_at, products(id, name, slug)')
     .order('name');
+
   return Response.json(data ?? []);
 }
 

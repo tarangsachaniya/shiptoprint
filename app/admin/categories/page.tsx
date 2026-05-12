@@ -1,7 +1,6 @@
 import { getSession } from '@/lib/session';
 import { redirect } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase/client';
-import Navbar from '@/components/Navbar';
 import CategoriesClient from '@/components/admin/CategoriesClient';
 
 export default async function CategoriesPage() {
@@ -14,9 +13,6 @@ export default async function CategoriesPage() {
     .order('name');
 
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar user={{ email: session.email, role: session.role }} />
-      <CategoriesClient initialCategories={categories ?? []} />
-    </div>
+    <CategoriesClient initialCategories={categories ?? []} />
   );
 }
