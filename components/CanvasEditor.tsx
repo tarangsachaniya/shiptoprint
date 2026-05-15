@@ -518,7 +518,7 @@ export default function CanvasEditor() {
   /* ════ render ═════════════════════════════════════════════════ */
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-gray-50 text-gray-900">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-gray-50 text-gray-900">
 
       {/* ── Header ──────────────────────────────────────────── */}
       <header className="shrink-0 border-b border-gray-200 bg-white">

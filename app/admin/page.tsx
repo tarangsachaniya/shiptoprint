@@ -22,7 +22,7 @@ export default async function AdminDashboard() {
     .select("id", { count: "exact", head: true });
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Dashboard</h1>
         <p className="text-sm text-gray-500 mt-1">Platform overview</p>
@@ -68,42 +68,44 @@ export default async function AdminDashboard() {
       <div>
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Recent Users</h2>
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-soft">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/80">
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Role</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Joined</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users && users.length > 0 ? (
-                users.map((u) => (
-                  <tr key={u.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                    <td className="px-5 py-3.5 text-sm text-gray-700">{u.email}</td>
-                    <td className="px-5 py-3.5">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        u.role === "admin"
-                          ? "bg-gray-900 text-white"
-                          : "bg-gray-100 text-gray-600"
-                      }`}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 text-xs text-gray-400">
-                      {new Date(u.created_at).toLocaleDateString()}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/80">
+                  <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</th>
+                  <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Role</th>
+                  <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Joined</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users && users.length > 0 ? (
+                  users.map((u) => (
+                    <tr key={u.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                      <td className="px-5 py-3.5 text-sm text-gray-700 max-w-[180px] truncate">{u.email}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          u.role === "admin"
+                            ? "bg-gray-900 text-white"
+                            : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-xs text-gray-400 hidden sm:table-cell">
+                        {new Date(u.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="px-5 py-10 text-center text-sm text-gray-400">
+                      No users yet
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={3} className="px-5 py-10 text-center text-sm text-gray-400">
-                    No users yet
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

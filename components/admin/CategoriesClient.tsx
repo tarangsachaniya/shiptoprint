@@ -65,7 +65,7 @@ export default function CategoriesClient({ initialCategories }: { initialCategor
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       {/* Page header */}
       <div className="flex items-start justify-between mb-8">
         <div>
@@ -77,7 +77,7 @@ export default function CategoriesClient({ initialCategories }: { initialCategor
       {/* Create form */}
       <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-soft mb-6">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Add Category</h2>
-        <form onSubmit={create} className="flex gap-3">
+        <form onSubmit={create} className="flex flex-col sm:flex-row gap-3">
           <Input
             value={name}
             onChange={e => setName(e.target.value)}
@@ -92,6 +92,7 @@ export default function CategoriesClient({ initialCategories }: { initialCategor
 
       {/* Table */}
       <div className="bg-white border border-gray-100 rounded-xl shadow-soft overflow-hidden">
+      <div className="overflow-x-auto">
         {categories.length === 0 ? (
           <div className="py-16 text-center">
             <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center mx-auto mb-4">
@@ -188,6 +189,7 @@ export default function CategoriesClient({ initialCategories }: { initialCategor
             </tbody>
           </table>
         )}
+      </div>
       </div>
     </div>
   );

@@ -118,7 +118,7 @@ export default function ProductsClient({
 
   /* ── render ── */
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       {/* Page header */}
       <div className="flex items-start justify-between mb-8">
         <div>
@@ -132,6 +132,7 @@ export default function ProductsClient({
 
       {/* Table */}
       <div className="bg-white border border-gray-100 rounded-xl shadow-soft overflow-hidden">
+        <div className="overflow-x-auto">
         {products.length === 0 ? (
           <div className="py-16 text-center">
             <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center mx-auto mb-4">
@@ -243,6 +244,7 @@ export default function ProductsClient({
             </tbody>
           </table>
         )}
+        </div>
       </div>
 
       {/* ── Slide-over form (unchanged logic) ── */}

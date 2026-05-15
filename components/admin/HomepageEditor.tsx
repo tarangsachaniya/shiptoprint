@@ -197,9 +197,9 @@ export default function HomepageEditor({
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       {/* Header */}
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">Homepage Content</h1>
           <p className="text-sm text-gray-500 mt-1">Edit content displayed on the public homepage</p>
@@ -212,7 +212,7 @@ export default function HomepageEditor({
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden">
         {TABS.map((t) => (
           <button
             key={t.id}
